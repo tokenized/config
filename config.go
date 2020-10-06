@@ -141,3 +141,8 @@ func fetchFromParamStore(keyName string) ([]byte, error) {
 
 	return b, nil
 }
+
+// DumpSafe logs a "safe" version of the config, with sensitive values masked.
+func DumpSafe(ctx context.Context, cfg interface{}) {
+	logger.Info(ctx, "Config : %+v", Mask(cfg))
+}
