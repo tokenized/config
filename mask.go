@@ -1,8 +1,12 @@
 package config
 
 import (
+	"encoding/json"
 	"fmt"
 	"reflect"
+	"strconv"
+
+	"github.com/pkg/errors"
 )
 
 // Mask returns a map representing a config that is safe to print.
@@ -61,4 +65,90 @@ func isEmptyMap(v map[string]interface{}) bool {
 	}
 
 	return true
+}
+
+// MarshalJSONMaskedRaw marshals a config into a JSON RawMessage and excludes any "masked" values.
+// This can be used to pass into a function that wants a JSON marshaler like a logging function that
+// will escape the JSON if it isn't passed as a marshaler object.
+func MarshalJSONMaskedRaw(value interface{}) (*json.RawMessage, error) {
+	b, err := MarshalJSONMasked(value)
+	if err != nil {
+		return nil, errors.Wrap(err, "marshal json")
+	}
+
+	rawJSON := &json.RawMessage{}
+	if err := rawJSON.UnmarshalJSON(b); err != nil {
+		return nil, errors.Wrap(err, "unmarshal json")
+	}
+
+	return rawJSON, nil
+}
+
+// MarshalJSONMasked marshals a config into JSON bytes and excludes any "masked" values.
+// The output is meant for display only and can't necessarily be unmarshalled back into the same
+// object type because masked values are output as a string value of "***", so if the field type is
+// not a string then it will fail.
+func MarshalJSONMasked(value interface{}) ([]byte, error) {
+	var result []byte
+	var fields reflect.Type
+	var values reflect.Value
+	if reflect.ValueOf(value).Kind() == reflect.Ptr {
+		fields = reflect.TypeOf(value).Elem()
+		values = reflect.ValueOf(value).Elem()
+	} else {
+		fields = reflect.TypeOf(value)
+		values = reflect.ValueOf(value)
+	}
+
+	result = append(result, '{')
+	for i := 0; i < fields.NumField(); i++ {
+		// get the struct field
+		field := fields.Field(i)
+		fieldValue := values.Field(i)
+
+		if !fieldValue.CanInterface() {
+			continue // not exported
+		}
+
+		var b []byte
+		var err error
+		if field.Tag.Get("masked") == "true" {
+			// Field is masked
+			b = []byte(strconv.Quote("***"))
+		} else {
+			iface := fieldValue.Interface()
+			if marshaler, ok := iface.(json.Marshaler); ok {
+				b, err = marshaler.MarshalJSON()
+				if err != nil {
+					return nil, errors.Wrapf(err, "marshal field: %s", field.Name)
+				}
+			} else if stringer, ok := iface.(fmt.Stringer); ok {
+				b = []byte(strconv.Quote(stringer.String()))
+			} else if field.Type.Kind() == reflect.Struct {
+				b, err = MarshalJSONMasked(iface)
+				if err != nil {
+					return nil, errors.Wrapf(err, "marshal struct: %s", field.Name)
+				}
+			} else {
+				b = []byte(strconv.Quote(fmt.Sprintf("%v", iface)))
+			}
+		}
+
+		if len(result) > 1 {
+			result = append(result, ',')
+		}
+
+		name := field.Name
+		tagName := field.Tag.Get("json")
+		if len(tagName) > 0 {
+			name = tagName
+		}
+
+		result = append(result, []byte(strconv.Quote(name))...)
+		result = append(result, ':')
+		result = append(result, b...)
+	}
+	result = append(result, '}')
+
+	return result, nil
 }
