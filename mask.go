@@ -122,7 +122,6 @@ func MarshalJSONMasked(value interface{}) ([]byte, error) {
 		var err error
 		iface := fieldValue.Interface()
 		if field.Tag.Get("masked") == "true" {
-			fmt.Printf("field is masked : %s\n", field.Name)
 			// Field is masked
 			if marshaler, ok := iface.(MaskedJSONMarshaller); ok {
 				b, err = marshaler.MarshalJSONMasked()
@@ -130,7 +129,6 @@ func MarshalJSONMasked(value interface{}) ([]byte, error) {
 					return nil, errors.Wrapf(err, "marshal masked field: %s", field.Name)
 				}
 			} else {
-				fmt.Printf("field does not have masked marshaller : %s\n", field.Name)
 				b = []byte(strconv.Quote("***"))
 			}
 		} else {
