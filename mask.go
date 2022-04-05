@@ -9,6 +9,14 @@ import (
 	"github.com/pkg/errors"
 )
 
+// MaskedJSONMarshaller provides an interface for structs to implement so that when the value is
+// tagged as masked this marshaller will be called to output a related value that isn't masked.
+// For example a private key class can implement this function to output the public key instead even
+// though the private key is in the config.
+type MaskedJSONMarshaller interface {
+	MarshalJSONMasked() ([]byte, error)
+}
+
 // Mask returns a map representing a config that is safe to print.
 func Mask(v interface{}) map[string]interface{} {
 	// a map to contain a masked version of the struct
@@ -112,11 +120,20 @@ func MarshalJSONMasked(value interface{}) ([]byte, error) {
 
 		var b []byte
 		var err error
+		iface := fieldValue.Interface()
 		if field.Tag.Get("masked") == "true" {
+			fmt.Printf("field is masked : %s\n", field.Name)
 			// Field is masked
-			b = []byte(strconv.Quote("***"))
+			if marshaler, ok := iface.(MaskedJSONMarshaller); ok {
+				b, err = marshaler.MarshalJSONMasked()
+				if err != nil {
+					return nil, errors.Wrapf(err, "marshal masked field: %s", field.Name)
+				}
+			} else {
+				fmt.Printf("field does not have masked marshaller : %s\n", field.Name)
+				b = []byte(strconv.Quote("***"))
+			}
 		} else {
-			iface := fieldValue.Interface()
 			if marshaler, ok := iface.(json.Marshaler); ok {
 				b, err = marshaler.MarshalJSON()
 				if err != nil {
