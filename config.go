@@ -6,11 +6,13 @@ import (
 	"io/ioutil"
 	"os"
 
+	"github.com/tokenized/pkg/logger"
+
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/ssm"
 	"github.com/kelseyhightower/envconfig"
-	"github.com/tokenized/pkg/logger"
+	"github.com/pkg/errors"
 )
 
 const (
@@ -68,9 +70,14 @@ func LoadConfig(ctx context.Context, cfg interface{}) error {
 
 // LoadFromFile loads a JSON config from a file.
 func LoadFromFile(filename string, cfg interface{}) error {
+	// Load default values from environment definitions.
+	if err := LoadEnvironment(cfg); err != nil {
+		return errors.Wrap(err, "load environment defaults")
+	}
+
 	b, err := ioutil.ReadFile(filename)
 	if err != nil {
-		return err
+		return errors.Wrap(err, "read file")
 	}
 
 	if err := json.Unmarshal(b, cfg); err != nil {
@@ -98,13 +105,14 @@ func LoadEnvironment(cfg interface{}) error {
 // It is intended to eventually replace the usage of ParamStore, which
 // requires a specific type.
 func LoadParamStore(keyName string, cfg interface{}) error {
+	// Load default values from environment definitions.
 	if err := LoadEnvironment(cfg); err != nil {
-		return err
+		return errors.Wrap(err, "load environment defaults")
 	}
 
 	b, err := fetchFromParamStore(keyName)
 	if err != nil {
-		return err
+		return errors.Wrap(err, "fetch param store")
 	}
 
 	// Unmarshal param value
@@ -120,7 +128,7 @@ func fetchFromParamStore(keyName string) ([]byte, error) {
 	})
 
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "new session")
 	}
 
 	ssmsvc := ssm.New(sess, aws.NewConfig().WithRegion(os.Getenv("AWS_REGION")))
@@ -133,7 +141,7 @@ func fetchFromParamStore(keyName string) ([]byte, error) {
 	})
 
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "get parameters")
 	}
 
 	// Unmarshal param value
