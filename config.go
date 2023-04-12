@@ -60,7 +60,6 @@ func LoadConfig(ctx context.Context, cfg interface{}) error {
 
 	if len(filename) > 0 {
 		logger.Info(ctx, "Loading config from file : %s", filename)
-
 		return LoadFromFile(filename, cfg)
 	}
 
@@ -81,7 +80,7 @@ func LoadFromFile(filename string, cfg interface{}) error {
 	}
 
 	if err := json.Unmarshal(b, cfg); err != nil {
-		return err
+		return errors.Wrap(err, "json")
 	}
 
 	return nil
